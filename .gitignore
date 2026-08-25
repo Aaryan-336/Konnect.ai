@@ -1,0 +1,56 @@
+# Attachments (explicitly excluded)
+attachments/
+attachments/**
+
+# Environment & Secrets
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+backend/.env
+frontend/.env.local
+frontend/.env.production
+
+# Python & Virtual Environments
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+**/*.egg-info/
+dist/
+build/
+.venv/
+**/.venv/
+venv/
+**/venv/
+
+# Node.js
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+out/
+**/out/
+
+# Uploads & local data
+uploads/
+**/uploads/
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+**/.DS_Store
+
+# Logs
+*.log
+**/*.log
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+**/.pytest_cache/
