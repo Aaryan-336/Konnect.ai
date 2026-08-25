@@ -9,10 +9,24 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
 
+def _normalize_async_url(url: str) -> str:
+    """Ensure DATABASE_URL uses the asyncpg driver."""
+    if not url:
+        return url
+    if url.startswith("postgres://"):
+        return "postgresql+asyncpg://" + url[len("postgres://") :]
+    if url.startswith("postgresql://") and not url.startswith("postgresql+"):
+        return "postgresql+asyncpg://" + url[len("postgresql://") :]
+    if url.startswith("postgresql+psycopg2://"):
+        return "postgresql+asyncpg://" + url[len("postgresql+psycopg2://") :]
+    return url
+
+
 settings = get_settings()
+db_url = _normalize_async_url(settings.database_url)
 
 engine = create_async_engine(
-    settings.database_url,
+    db_url,
     echo=settings.db_echo,
     pool_size=20,
     max_overflow=10,
