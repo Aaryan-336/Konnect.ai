@@ -30,7 +30,7 @@ const READ_RETRY_DELAYS_MS = [300, 800, 1600];
  * exactly what a stalled dev server looks like, and without a deadline the app
  * sits on its splash screen indefinitely rather than reporting anything.
  */
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 /** Streaming answers legitimately run for a minute; only the connection is bounded. */
 const STREAM_CONNECT_TIMEOUT_MS = 60_000;
 /**
