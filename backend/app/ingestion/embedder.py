@@ -57,8 +57,9 @@ class EmbeddingProvider(ABC):
 # Measured here on 1200-character chunks: 256 runs at 3.7 chunks/s and 32 at
 # 5.5 — the large batch is slower, not faster, because the peak allocation
 # pushes the host into swap. It is also what got the server OOM-killed
-# part-way through a large workbook.
-EMBED_BATCH_SIZE = 32
+# On 512MB RAM free-tier instances (Render/Koyeb), keeping batch size small
+# (8) and threads limited to 1 prevents ONNX runtime from exceeding memory limits.
+EMBED_BATCH_SIZE = 8
 
 
 class FastEmbedEmbedder(EmbeddingProvider):
@@ -93,7 +94,8 @@ class FastEmbedEmbedder(EmbeddingProvider):
             from fastembed import TextEmbedding
 
             logger.info("embedder_loading", model=self.model_name)
-            self._model = TextEmbedding(model_name=self.model_name)
+            # threads=1 keeps memory footprint minimal inside 512MB RAM containers
+            self._model = TextEmbedding(model_name=self.model_name, threads=1)
             logger.info("embedder_ready", model=self.model_name)
         return self._model
 
@@ -101,13 +103,16 @@ class FastEmbedEmbedder(EmbeddingProvider):
         """Blocking. Call through _run_async from anything on the event loop."""
         if not texts:
             return []
+        import gc
         prepared = [f"{prefix}{t}" for t in texts] if prefix else texts
         # Converted as they arrive rather than materialising the generator
         # first, so only one batch of ndarrays is alive at a time.
-        return [
+        results = [
             v.tolist() if hasattr(v, "tolist") else list(v)
             for v in self.model.embed(prepared, batch_size=EMBED_BATCH_SIZE)
         ]
+        gc.collect()
+        return results
 
     async def _run_async(self, texts: list[str], prefix: str) -> list[list[float]]:
         """

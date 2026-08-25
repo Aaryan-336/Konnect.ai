@@ -175,10 +175,12 @@ class XLSXParser(DocumentParser):
                 tables.append({
                     "sheet": sheet_name,
                     "headers": headers,
-                    "rows": body,
+                    "rows": body[:20],
                 })
         finally:
             wb.close()
+            import gc
+            gc.collect()
 
         return ParsedDocument(
             sections=sections,

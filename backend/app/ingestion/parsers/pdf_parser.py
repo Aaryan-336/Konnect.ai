@@ -49,6 +49,8 @@ class PDFParser(DocumentParser):
                     pass
         finally:
             doc.close()
+            import gc
+            gc.collect()
 
         return ParsedDocument(
             sections=sections,
