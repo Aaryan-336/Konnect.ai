@@ -138,7 +138,7 @@ class Settings(BaseSettings):
 
     # --- Default Admin ---
     default_admin_email: str = "admin@knowledgehub.ai"
-    default_admin_password: str = "CHANGE_ME_IMMEDIATELY"
+    default_admin_password: str = "ASK30"
 
     @property
     def cors_origin_list(self) -> list[str]:
