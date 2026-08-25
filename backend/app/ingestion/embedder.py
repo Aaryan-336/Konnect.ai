@@ -59,7 +59,16 @@ class EmbeddingProvider(ABC):
 # pushes the host into swap. It is also what got the server OOM-killed
 # On 512MB RAM free-tier instances (Render/Koyeb), keeping batch size small
 # (8) and threads limited to 1 prevents ONNX runtime from exceeding memory limits.
-EMBED_BATCH_SIZE = 8
+def _trim_memory():
+    """Force Python garbage collection and release heap pages back to OS."""
+    import gc
+    gc.collect()
+    try:
+        import ctypes
+        libc = ctypes.CDLL("libc.so.6")
+        libc.malloc_trim(0)
+    except Exception:
+        pass
 
 
 class FastEmbedEmbedder(EmbeddingProvider):
@@ -103,27 +112,29 @@ class FastEmbedEmbedder(EmbeddingProvider):
         """Blocking. Call through _run_async from anything on the event loop."""
         if not texts:
             return []
-        import gc
         prepared = [f"{prefix}{t}" for t in texts] if prefix else texts
-        # Converted as they arrive rather than materialising the generator
-        # first, so only one batch of ndarrays is alive at a time.
         results = [
             v.tolist() if hasattr(v, "tolist") else list(v)
             for v in self.model.embed(prepared, batch_size=EMBED_BATCH_SIZE)
         ]
-        gc.collect()
+        _trim_memory()
         return results
 
     async def _run_async(self, texts: list[str], prefix: str) -> list[list[float]]:
         """
-        Embed off the event loop.
-
-        ONNX inference is synchronous CPU work. Awaiting it directly inside an
-        async handler blocked the entire server for the duration of an ingest —
-        health checks and sign-in hung, which read as the backend being down
-        while it was in fact busy embedding.
+        Embed off the event loop in small mini-batches to keep peak memory flat.
         """
-        return await asyncio.to_thread(self._run, texts, prefix)
+        if not texts:
+            return []
+        all_embeddings: list[list[float]] = []
+        chunk_batch = 8
+        for i in range(0, len(texts), chunk_batch):
+            batch = texts[i : i + chunk_batch]
+            res = await asyncio.to_thread(self._run, batch, prefix)
+            all_embeddings.extend(res)
+            _trim_memory()
+            await asyncio.sleep(0.01)
+        return all_embeddings
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         # Untagged inputs are treated as documents, matching the previous

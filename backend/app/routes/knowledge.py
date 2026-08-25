@@ -209,6 +209,16 @@ async def upload_files(
             })
         except Exception as e:
             results.append({"filename": file.filename, "status": "failed", "error": str(e)[:200]})
+        finally:
+            del content
+            import gc
+            gc.collect()
+            try:
+                import ctypes
+                libc = ctypes.CDLL("libc.so.6")
+                libc.malloc_trim(0)
+            except Exception:
+                pass
 
     await AuditService.log(
         db, user.tenant_id, "files_uploaded",
