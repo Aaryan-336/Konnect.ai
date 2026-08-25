@@ -54,11 +54,18 @@ class EmbeddingProvider(ABC):
 
 
 # fastembed defaults to 256, which is tuned for machines with memory to spare.
-# Measured here on 1200-character chunks: 256 runs at 3.7 chunks/s and 32 at
-# 5.5 — the large batch is slower, not faster, because the peak allocation
-# pushes the host into swap. It is also what got the server OOM-killed
-# On 512MB RAM free-tier instances (Render/Koyeb), keeping batch size small
-# (8) and threads limited to 1 prevents ONNX runtime from exceeding memory limits.
+# Measured on 1200-character chunks: 256 runs at 3.7 chunks/s and 32 at 5.5 —
+# the large batch is slower, not faster, because the peak allocation pushes the
+# host into swap, and it is what got the server OOM-killed part-way through a
+# large workbook. On 512MB free-tier containers (Render/Koyeb) a batch of 8
+# alongside threads=1 keeps ONNX inside the memory limit.
+#
+# One constant, used by both the inner model call and the outer mini-batch
+# loop. They were allowed to drift apart once already, and the loop below is
+# what actually bounds peak memory.
+EMBED_BATCH_SIZE = 8
+
+
 def _trim_memory():
     """Force Python garbage collection and release heap pages back to OS."""
     import gc
@@ -127,9 +134,8 @@ class FastEmbedEmbedder(EmbeddingProvider):
         if not texts:
             return []
         all_embeddings: list[list[float]] = []
-        chunk_batch = 8
-        for i in range(0, len(texts), chunk_batch):
-            batch = texts[i : i + chunk_batch]
+        for i in range(0, len(texts), EMBED_BATCH_SIZE):
+            batch = texts[i : i + EMBED_BATCH_SIZE]
             res = await asyncio.to_thread(self._run, batch, prefix)
             all_embeddings.extend(res)
             _trim_memory()
