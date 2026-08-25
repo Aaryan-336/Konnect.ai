@@ -114,22 +114,49 @@ async def seed_database():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown."""
-    # Ensure settings are freshly loaded
     get_settings.cache_clear()
+    current_settings = get_settings()
 
-    # Create tables
-    async with engine.begin() as conn:
-        # Enable pgvector
+    # Log database host (masked password for security)
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(current_settings.database_url)
+        db_host = f"{parsed.hostname}:{parsed.port or 5432}{parsed.path}"
+        logger.info("database_connecting", host=db_host)
+    except Exception:
+        pass
+
+    # Retry connection on startup (useful for cloud database cold-starts)
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
         try:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        except Exception:
-            pass
-        await conn.run_sync(Base.metadata.create_all)
+            async with engine.begin() as conn:
+                try:
+                    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                except Exception:
+                    pass
+                await conn.run_sync(Base.metadata.create_all)
+            await seed_database()
+            logger.info("database_ready")
+            break
+        except Exception as e:
+            if attempt == max_retries:
+                logger.error(
+                    "database_connection_failed",
+                    error=str(e),
+                    hint="Check that DATABASE_URL is set correctly in your Render Environment tab.",
+                )
+                raise
+            logger.warning(
+                "database_connection_retry",
+                attempt=attempt,
+                max_retries=max_retries,
+                error=str(e),
+            )
+            import asyncio
+            await asyncio.sleep(2)
 
-    # Seed
-    await seed_database()
-
-    logger.info("app_started", app=settings.app_name, env=settings.app_env)
+    logger.info("app_started", app=current_settings.app_name, env=current_settings.app_env)
     yield
 
     await engine.dispose()
