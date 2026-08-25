@@ -144,40 +144,39 @@ class IngestionService:
             # Store in database
             indexed_at = datetime.now(timezone.utc)
 
-            async with db.begin_nested():
-                version = DocumentVersion(
+            version = DocumentVersion(
+                document_id=doc.id,
+                version=version_number,
+                content_hash=content_hash,
+                status="indexed",
+                indexed_at=indexed_at,
+            )
+            db.add(version)
+            await db.flush()
+
+            for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                db.add(DocumentChunk(
                     document_id=doc.id,
-                    version=version_number,
-                    content_hash=content_hash,
-                    status="indexed",
-                    indexed_at=indexed_at,
-                )
-                db.add(version)
-                await db.flush()
+                    tenant_id=doc.tenant_id,
+                    source_id=doc.source_id,
+                    chunk_index=i,
+                    content=chunk.content,
+                    page=chunk.page,
+                    section=chunk.section,
+                    metadata_extra=chunk.metadata,
+                    embedding=embedding,
+                ))
 
-                for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-                    db.add(DocumentChunk(
-                        document_id=doc.id,
-                        tenant_id=doc.tenant_id,
-                        source_id=doc.source_id,
-                        chunk_index=i,
-                        content=chunk.content,
-                        page=chunk.page,
-                        section=chunk.section,
-                        metadata_extra=chunk.metadata,
-                        embedding=embedding,
-                    ))
-
-                doc.status = "indexed"
-                # Not an error, but the operator needs to see it: the tail of
-                # this document is not in the index and cannot be retrieved.
-                doc.error_message = (
-                    f"Indexed first {len(chunks)} chunks; {truncated} dropped "
-                    f"(document exceeds the {settings.max_chunks_per_document}-chunk limit)"
-                    if truncated else None
-                )
-                doc.indexed_at = indexed_at
-                await db.flush()
+            doc.status = "indexed"
+            # Not an error, but the operator needs to see it: the tail of
+            # this document is not in the index and cannot be retrieved.
+            doc.error_message = (
+                f"Indexed first {len(chunks)} chunks; {truncated} dropped "
+                f"(document exceeds the {settings.max_chunks_per_document}-chunk limit)"
+                if truncated else None
+            )
+            doc.indexed_at = indexed_at
+            await db.flush()
 
             logger.info("ingestion_complete", filename=doc.name, chunks=len(chunks))
             return doc
